@@ -1,7 +1,7 @@
 # **KeyZero (previously Btcbf)** [![CodeFactor](https://www.codefactor.io/repository/github/vlnahp/KeyZero/badge/main)](https://www.codefactor.io/repository/github/vlnahp/KeyZero/overview/main)
 
 
-Modded version for better performance over multithread. I've removed sequential and left random , because that didn't work in the original. 
+Modded version for better performance over multithread. 
 Using a Ryzen 9 5950x I am getting 70,000 tries per second.
 
 
