@@ -6,9 +6,9 @@ import multiprocessing
 from multiprocessing import Pool, cpu_count, Value, Manager
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
- 
+
 # ── helpers that must live at module level for pickling ──────────────────────
- 
+
 def _random_brute_worker(args):
     """Each worker generates keys independently using its own RNG."""
     n, loaded_addresses, found_flag, counter = args
@@ -19,8 +19,8 @@ def _random_brute_worker(args):
         found_flag.value = 1
         _save_found(key.address, key.to_wif())
         os._exit(0)
- 
- 
+
+
 def _sequential_brute_worker(args):
     """Derives a key from a specific integer n."""
     n, loaded_addresses, found_flag, counter = args
@@ -31,8 +31,8 @@ def _sequential_brute_worker(args):
         found_flag.value = 1
         _save_found(key.address, key.to_wif())
         os._exit(0)
- 
- 
+
+
 def _online_brute_worker(args):
     """Random key + live blockchain lookup (I/O-bound, uses threads internally)."""
     n, found_flag, counter = args
@@ -50,8 +50,8 @@ def _online_brute_worker(args):
             os._exit(0)
     except Exception:
         pass
- 
- 
+
+
 def _save_found(address, wif):
     print(f"\n{'='*50}")
     print(f"  *** MATCHING ADDRESS FOUND ***")
@@ -61,10 +61,10 @@ def _save_found(address, wif):
     with open("foundkey.txt", "a") as f:
         f.write(address + "\n")
         f.write(wif + "\n")
- 
- 
+
+
 # ── speed monitor (runs in its own process) ──────────────────────────────────
- 
+
 def _speed_monitor(counter, start_t, start_n, seq, cur_n_val):
     """Dedicated process that prints throughput every 2 seconds."""
     prev = 0
@@ -92,14 +92,14 @@ def _speed_monitor(counter, start_t, start_n, seq, cur_n_val):
             except Exception:
                 pass
         prev = n
- 
- 
+
+
 # ── main class ───────────────────────────────────────────────────────────────
- 
+
 class Btcbf:
     def __init__(self):
         self.cores = cpu_count()
- 
+
         # shared state (multiprocessing-safe)
         manager = multiprocessing.Manager()
         self.counter   = Value('Q', 0)   # unsigned long long
@@ -108,7 +108,7 @@ class Btcbf:
         self.start_n   = Value('Q', 0)
         self.cur_n     = Value('Q', 0)
         self.seq       = Value('b', 0)
- 
+
         # load target addresses into a frozenset (shared via fork / copy)
         if not os.path.exists("address.txt"):
             print("WARNING: address.txt not found.")
@@ -118,12 +118,12 @@ class Btcbf:
             lines = [x.strip() for x in lines if 'wallet' not in x and x.strip()]
             self.loaded_addresses = frozenset(lines)
             print(f"  Loaded {len(self.loaded_addresses):,} target addresses.")
- 
+
         if not os.path.exists("cache.txt"):
             open("cache.txt", "w").close()
- 
+
     # ── core selection ───────────────────────────────────────────────────────
- 
+
     def ask_cores(self):
         available = cpu_count()
         ans = input(
@@ -146,9 +146,9 @@ class Btcbf:
             print("  Invalid input.")
             exit()
         print(f"  Using {self.cores} core(s).\n")
- 
+
     # ── speed monitor launcher ───────────────────────────────────────────────
- 
+
     def _start_monitor(self):
         p = multiprocessing.Process(
             target=_speed_monitor,
@@ -157,9 +157,9 @@ class Btcbf:
         )
         p.start()
         return p
- 
+
     # ── attack runners ───────────────────────────────────────────────────────
- 
+
     def run_random_offline(self):
         """
         True parallel random attack.
@@ -170,27 +170,27 @@ class Btcbf:
         addresses = self.loaded_addresses
         found     = self.found_flag
         counter   = self.counter
- 
+
         # Build a huge lazy arg list so Pool stays fed
         def arg_gen():
             i = 0
             while True:
                 yield (i, addresses, found, counter)
                 i += 1
- 
+
         with self.start_t.get_lock():
             self.start_t.value = time()
- 
+
         self._start_monitor()
         print(f"  Starting random offline attack on {self.cores} cores ...\n")
- 
+
         with Pool(processes=self.cores) as pool:
             # imap_unordered keeps all cores busy without building the list in RAM
             for _ in pool.imap_unordered(_random_brute_worker, arg_gen(), chunksize=500):
                 if self.found_flag.value:
                     pool.terminate()
                     break
- 
+
     def run_sequential_offline(self, start, end):
         """
         Sequential attack: partitions [start, end) across all cores.
@@ -199,19 +199,19 @@ class Btcbf:
         addresses = self.loaded_addresses
         found     = self.found_flag
         counter   = self.counter
- 
+
         with self.start_t.get_lock():
             self.start_t.value = time()
         self.start_n.value = start
         self.seq.value     = 1
- 
+
         self._start_monitor()
         print(f"  Starting sequential offline attack [{start:,} → {end:,}] on {self.cores} cores ...\n")
- 
+
         def arg_gen(s, e):
             for i in range(s, e):
                 yield (i, addresses, found, counter)
- 
+
         with Pool(processes=self.cores) as pool:
             for _ in pool.imap_unordered(_sequential_brute_worker, arg_gen(start, end), chunksize=1000):
                 if self.found_flag.value:
@@ -219,11 +219,11 @@ class Btcbf:
                     break
                 with self.cur_n.get_lock():
                     self.cur_n.value += 1
- 
+
         # clear cache on completion
         open("cache.txt", "w").close()
         print("\n  Range complete.")
- 
+
     def run_random_online(self):
         """
         Online mode: random keys checked against blockchain API.
@@ -232,32 +232,32 @@ class Btcbf:
         """
         found   = self.found_flag
         counter = self.counter
- 
+
         def arg_gen():
             i = 0
             while True:
                 yield (i, found, counter)
                 i += 1
- 
+
         with self.start_t.get_lock():
             self.start_t.value = time()
- 
+
         self._start_monitor()
         print(f"  Starting random online attack on {self.cores} cores ...\n")
- 
+
         with Pool(processes=self.cores) as pool:
             for _ in pool.imap_unordered(_online_brute_worker, arg_gen(), chunksize=10):
                 if self.found_flag.value:
                     pool.terminate()
                     break
- 
+
     # ── key generation utilities ─────────────────────────────────────────────
- 
+
     def generate_random_address(self):
         key = Key()
         print(f"\n  Public Address : {key.address}")
         print(f"  Private Key    : {key.to_wif()}")
- 
+
     def generate_from_private_key(self, wif):
         try:
             key = Key(wif)
@@ -265,9 +265,9 @@ class Btcbf:
             print("  Wallet ready!")
         except Exception:
             print("\n  Incorrect key format.")
- 
+
     # ── main menu ────────────────────────────────────────────────────────────
- 
+
     def menu(self):
         print("\n" + "="*50)
         print("  Bitcoin Brute-Force Tool")
@@ -279,27 +279,27 @@ class Btcbf:
         print("  [0]  Exit")
         print("="*50)
         choice = input("  > ").strip()
- 
+
         if choice == "1":
             self.generate_random_address()
             print("  Wallet ready!")
             input("\n  Press Enter to exit")
- 
+
         elif choice == "2":
             wif = input("\n  Enter Private Key > ").strip()
             self.generate_from_private_key(wif)
             input("  Press Enter to exit")
- 
+
         elif choice == "3":
             print("\n  [1]  Random attack")
             print("  [2]  Sequential attack")
             print("  [0]  Back")
             m = input("  > ").strip()
- 
+
             if m == "1":
                 self.ask_cores()
                 self.run_random_offline()
- 
+
             elif m == "2":
                 cache = open("cache.txt").read().strip()
                 self.ask_cores()
@@ -316,7 +316,7 @@ class Btcbf:
                     self.run_sequential_offline(start, end)
             else:
                 return
- 
+
         elif choice == "4":
             print("\n  [1]  Random attack")
             print("  [0]  Back")
@@ -324,26 +324,25 @@ class Btcbf:
             if m == "1":
                 self.ask_cores()
                 self.run_random_online()
- 
+
         elif choice == "0":
             print("  Exiting...")
             sleep(1)
             exit()
- 
+
         else:
             print("  Invalid option.")
- 
- 
+
+
 # ── entry point ──────────────────────────────────────────────────────────────
- 
+
 if __name__ == "__main__":
     # Required on Windows / macOS for multiprocessing
     multiprocessing.freeze_support()
- 
+
     obj = Btcbf()
     try:
         obj.menu()
     except KeyboardInterrupt:
         print("\n\n  Ctrl+C — exiting.")
         os._exit(0)
- 
