@@ -285,4 +285,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n\n  Ctrl+C — exiting.")
         os._exit(0)
-_exit(0)
+
