@@ -2,7 +2,7 @@
 
 
 Modded version for better performance over multithread. I've removed sequential and left random , because that didn't work in the original. 
-Using a ryzen 9 5950x am getting 70,000 tries per second.
+Using a Ryzen 9 5950x I am getting 70,000 tries per second.
 
 
 KeyZero is a Python-based tool designed for brute-forcing Bitcoin private keys. It generates random , computes their corresponding public addresses, and checks them against an online API or an offline database to determine if they hold any Bitcoin balance. The name "KeyZero" humorously reflects the near-zero chance of finding a valid key, making it a fun and educational tool for exploring Bitcoin's security.
